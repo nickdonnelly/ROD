@@ -3,12 +3,14 @@
 // 03 October 2016
 
 #include <Servo.h>
+#include <Console.h>
 
 // Constants
-const int BITRATE_COMMUNICATION = 115200; // 115200 = wifi or ethernet, 9600 = USB
+const int BAUDRATE_COMMUNICATION = 115200; // 115200 = wifi or ethernet, 9600 = USB
 
 const int PIN_LED = 13; // Pin for the LED on-board the Yun
 
+// Note the DC Motors have to use the PWM capable pins for speed control.
 const int PIN_MOTOR_WHEEL_LEFT = 0; // these are the pins for the motors, don't forget
 const int PIN_MOTOR_WHEEL_RIGHT = 0; // to change these values to the correct ones later.
 
@@ -33,21 +35,26 @@ bool servoIsMoving = false;
 bool motorIsMoving = false; // these are on-the-fly updated.
 
 int SERVO_LEFT_CLAW_POS = 0;
-int SERVO_RIGHTT_CLAW_POS = 0;
+int SERVO_RIGHT_CLAW_POS = 0;
 int SERVO_RAMP_POS = 0;
 int SERVO_CAMERA_X_POS = 0;
 int SERVO_CAMERA_Y_POS = 0;
 
 void setup() {
   // Start the serial communication
-  Serial1.begin(BITRATE_COMMUNICATION); // this should be "Serial" if using USB. Serial1 is for ethernet/wifi.
-
+  Serial1.begin(BAUDRATE_COMMUNICATION); // this should be "Serial" if using USB. Serial1 is for ethernet/wifi.
+  Bridge.begin();
+  Console.begin();
   // Register the servos to the pins on the Arduino
   servoLeftClaw.attach(PIN_SERVO_CLAWS_LEFT);
   servoRightClaw.attach(PIN_SERVO_CLAWS_RIGHT);
   servoRamp.attach(PIN_SERVO_RAMP);
   servoCameraX.attach(PIN_SERVO_CAMERA_X);
   servoCameraY.attach(PIN_SERVO_CAMERA_Y);
+
+  // Initialize the DC motors
+  pinMode(PIN_MOTOR_WHEEL_LEFT, OUTPUT);
+  pinMode(PIN_MOTOR_WHEEL_RIGHT, OUTPUT);
 
   delay(50000); // wait 50 seconds to allow the connection to establish. This time may not need to be this long, but 
                 // I am unable to test it at the moment.
@@ -69,7 +76,12 @@ void setup() {
 
 void loop() {
   // TODO: read the input constantly, when messages come from servo, make appropriate state change.
-
+  while(Serial1.available() > 0){
+    Serial1.read();
+  }
+  Serial1.print(F("test"));
+  Console.println("test!");
+  
 }
 
 
@@ -88,11 +100,30 @@ void resetAllServos(){ // these values should be updated to reflect the correct 
 
 void updateServoValues(){ // corrects the global variables for positions of the servos
   SERVO_LEFT_CLAW_POS = servoLeftClaw.read();
-  SERVO_RIGHTT_CLAW_POS = servoRightClaw.read();
+  SERVO_RIGHT_CLAW_POS = servoRightClaw.read();
   SERVO_RAMP_POS = servoRamp.read();
   SERVO_CAMERA_X_POS = servoCameraX.read();
   SERVO_CAMERA_Y_POS = servoCameraY.read();
   netLog("[SERVO] All servo position values updated.");
+}
+
+
+void moveMotor(int motorSpeed, int pin){
+  // motorSpeed should be between 0 and 255
+  Serial1.println("[DCMOTOR] Started DC motor on %d with speed %d."); // TODO: fix this interp
+  analogWrite(pin, motorSpeed);
+}
+
+void moveForwardDistance(int distance){ // distance is in cm
+  // this function will require real-world measurements before it can be written fully
+
+  Serial1.println("[DCMOTOR] Moving the ROD forward.");
+  analogWrite(PIN_MOTOR_WHEEL_LEFT, 127); // the number here will need to be tweaked.
+  analogWrite(PIN_MOTOR_WHEEL_RIGHT, 127); 
+  delay(500); // again, tweak to be calculated programatically
+  analogWrite(PIN_MOTOR_WHEEL_LEFT, 0); // stop the motors
+  analogWrite(PIN_MOTOR_WHEEL_RIGHT, 0);
+  Serial1.println("[DCMOTOR] Motors have stopped moving.");
 }
 
 void moveServo(Servo servo, int position){
