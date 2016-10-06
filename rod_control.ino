@@ -112,14 +112,17 @@ void updateServoValues(){ // corrects the global variables for positions of the 
 void startMotor(int motorSpeed, int pin){
   // motorSpeed should be between 0 and 255
   Serial1.println("[DCMOTOR] Started DC motor on %d with speed %d."); // TODO: fix this interp
+  motorIsMoving = true;
   analogWrite(pin, motorSpeed);
 }
 
 // Stop moving the motor on the specified pin
 void stopMotor(int pin){
+  if(!motorIsMoving) return; // nothing is moving, nothing to stop.
   String logStr = "[DCMOTOR] Stopping motor on pin " + pin + ".";
   netLog(logStr);
   analogWrite(pin, 0); // stop the motor.
+  motorIsMoving = false;
   netLog("[DCMOTOR] Motor stopped.");
 }
 
@@ -128,9 +131,11 @@ void stopMotor(int pin){
 void controlSingleMotor(int motorPin, int motorSpeed, int duration){
   String logStr = "[DCMOTOR] Motor on pin " + motorPin + " with speed " + motorSpeed + " will be turned on for " + duration + " milliseconds.";
   netLog(logStr);
+  motorIsMoving = true;
   analogWrite(motorPin, motorSpeed); // turn on to specificed speed
   delay(duration); // wait
   analogWrite(motorPin, 0); // turn the motor off
+  motorIsMoving = false;
   netLog("[DCMOTOR] Motor stopped.");
 }
 
@@ -138,13 +143,16 @@ void controlSingleMotor(int motorPin, int motorSpeed, int duration){
 // Move the ROD forward the distance specified
 void moveForwardDistance(int distance){ // distance is in cm
   //TODO: this function will require real-world measurements before it can be written fully
-
+  
+  if(motorIsMoving) return; // break if motors are already in motion.
   Serial1.println("[DCMOTOR] Moving the ROD forward.");
+  motorIsMoving = true;
   analogWrite(PIN_MOTOR_WHEEL_LEFT, 127); // the number here will need to be tweaked.
   analogWrite(PIN_MOTOR_WHEEL_RIGHT, 127); 
   delay(500); // again, tweak to be calculated programatically
   analogWrite(PIN_MOTOR_WHEEL_LEFT, 0); // stop the motors
   analogWrite(PIN_MOTOR_WHEEL_RIGHT, 0);
+  motorIsMoving = false;
   Serial1.println("[DCMOTOR] Motors have stopped moving.");
 }
 
