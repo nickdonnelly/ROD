@@ -43,8 +43,8 @@ int SERVO_CAMERA_Y_POS = 0;
 void setup() {
   // Start the serial communication
   Serial1.begin(BAUDRATE_COMMUNICATION); // this should be "Serial" if using USB. Serial1 is for ethernet/wifi.
-  Bridge.begin();
-  Console.begin();
+  Bridge.begin(); // for testing
+  Console.begin(); // for testing
   // Register the servos to the pins on the Arduino
   servoLeftClaw.attach(PIN_SERVO_CLAWS_LEFT);
   servoRightClaw.attach(PIN_SERVO_CLAWS_RIGHT);
@@ -53,7 +53,7 @@ void setup() {
   servoCameraY.attach(PIN_SERVO_CAMERA_Y);
 
   // Initialize the DC motors
-  pinMode(PIN_MOTOR_WHEEL_LEFT, OUTPUT);
+  pinMode(PIN_MOTOR_WHEEL_LEFT, OUTPUT); // not sure these two lines are necessary.
   pinMode(PIN_MOTOR_WHEEL_RIGHT, OUTPUT);
 
   delay(50000); // wait 50 seconds to allow the connection to establish. This time may not need to be this long, but 
@@ -79,14 +79,14 @@ void loop() {
   while(Serial1.available() > 0){
     Serial1.read();
   }
-  Serial1.print(F("test"));
-  Console.println("test!");
+  Serial1.print(F("test")); // still trying to figure out how these work 
+  Console.println("test!"); // with PuTTY.
   
 }
 
 
 // Secondary functions
-void resetAllServos(){ // these values should be updated to reflect the correct values.
+void resetAllServos(){ //TODO: these values should be updated to reflect the correct values. The default might be 90?
   servoIsMoving = true;
   servoLeftClaw.write(0);
   servoRightClaw.write(0);
@@ -108,14 +108,36 @@ void updateServoValues(){ // corrects the global variables for positions of the 
 }
 
 
-void moveMotor(int motorSpeed, int pin){
+// Move a single motor at a specified speed
+void startMotor(int motorSpeed, int pin){
   // motorSpeed should be between 0 and 255
   Serial1.println("[DCMOTOR] Started DC motor on %d with speed %d."); // TODO: fix this interp
   analogWrite(pin, motorSpeed);
 }
 
+// Stop moving the motor on the specified pin
+void stopMotor(int pin){
+  String logStr = "[DCMOTOR] Stopping motor on pin " + pin + ".";
+  netLog(logStr);
+  analogWrite(pin, 0); // stop the motor.
+  netLog("[DCMOTOR] Motor stopped.");
+}
+
+// This function takes a motor on the provided pin and turns it on at the
+// specified speed for the number of milliseconds provided
+void controlSingleMotor(int motorPin, int motorSpeed, int duration){
+  String logStr = "[DCMOTOR] Motor on pin " + motorPin + " with speed " + motorSpeed + " will be turned on for " + duration + " milliseconds.";
+  netLog(logStr);
+  analogWrite(motorPin, motorSpeed); // turn on to specificed speed
+  delay(duration); // wait
+  analogWrite(motorPin, 0); // turn the motor off
+  netLog("[DCMOTOR] Motor stopped.");
+}
+
+
+// Move the ROD forward the distance specified
 void moveForwardDistance(int distance){ // distance is in cm
-  // this function will require real-world measurements before it can be written fully
+  //TODO: this function will require real-world measurements before it can be written fully
 
   Serial1.println("[DCMOTOR] Moving the ROD forward.");
   analogWrite(PIN_MOTOR_WHEEL_LEFT, 127); // the number here will need to be tweaked.
@@ -126,6 +148,7 @@ void moveForwardDistance(int distance){ // distance is in cm
   Serial1.println("[DCMOTOR] Motors have stopped moving.");
 }
 
+// Move the servo to the specified position
 void moveServo(Servo servo, int position){
   if(!servo.attached()) {  // exit if the servo isn't correctly attached
     netLog("[SERVO] Attempted to move servo that wasn't attached!");
@@ -143,7 +166,6 @@ void moveServo(Servo servo, int position){
   updateServoValues();
   netLog("[SERVO] Servo movement complete.");
 }
-
 
 // does the same as moveServo, but in small steps for smoother movement.
 // Make sure that degreeStep is a value that will, after a series of steps,
@@ -182,10 +204,6 @@ void moveServoGradual(Servo servo, int position, int delayBtwnMoves, int degreeS
 
 // Logs various messages to the Serial1 output.
 void netLog(char logMessage[]){
-  // print this to the console of the 4WBB0.exe software
-  // TODO
-  Serial1.println(logMessage);
+  // TODO: make this actually work.
+  Serial1.println(logMessage); 
 }
-
-
-
