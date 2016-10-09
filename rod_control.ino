@@ -2,6 +2,9 @@
 // Written by: Nick Donnelly (0978802)
 // 03 October 2016
 
+// NOTE: All logging/printing functionality over Serial1 behaves oddly, do not use it.
+// It forces the connection to be severed for some bizarre reason.
+
 #include <Servo.h>
 #include <Console.h>
 
@@ -20,6 +23,10 @@ const int PIN_SERVO_CLAWS_RIGHT = 0;
 
 const int PIN_SERVO_CAMERA_X = 0; // the 2 axial motors for the camera
 const int PIN_SERVO_CAMERA_Y = 0; 
+
+const int ROD_CRUISING_SPEED = 127; // tweak this. Our input system is quite rudimentary due most likely to
+                                    // network configuration the course administrators wont let us change, so
+                                    // this value needs to be correct.
 
 
 // Servos
@@ -42,9 +49,9 @@ int SERVO_CAMERA_Y_POS = 0;
 
 void setup() {
   // Start the serial communication
-  Serial1.begin(BAUDRATE_COMMUNICATION); // this should be "Serial" if using USB. Serial1 is for ethernet/wifi.
-  Bridge.begin(); // for testing
-  Console.begin(); // for testing
+  Serial1.begin(115200); // this should be "Serial" if using USB. Serial1 is for ethernet/wifi.
+//  Bridge.begin(); // for testing
+//  Console.begin(); // for testing
   // Register the servos to the pins on the Arduino
   servoLeftClaw.attach(PIN_SERVO_CLAWS_LEFT);
   servoRightClaw.attach(PIN_SERVO_CLAWS_RIGHT);
@@ -55,34 +62,72 @@ void setup() {
   // Initialize the DC motors
   pinMode(PIN_MOTOR_WHEEL_LEFT, OUTPUT); // not sure these two lines are necessary.
   pinMode(PIN_MOTOR_WHEEL_RIGHT, OUTPUT);
+  pinMode(PIN_LED, OUTPUT); // set the LED pin to output
 
-  delay(50000); // wait 50 seconds to allow the connection to establish. This time may not need to be this long, but 
-                // I am unable to test it at the moment.
-
-  while(Serial.available()){
-    Serial1.read(); // Empty the input stream before operation begins.
-  }
+  digitalWrite(PIN_LED, HIGH); // turn on LED
+  delay(60000); // wait 60 seconds to allow the connection to establish. This time may not need to be this long, but 
+  
   
   // Finally, blink the LED so we know the arduino is done booting.
-  pinMode(PIN_LED, OUTPUT); // set the LED pin to output
-  digitalWrite(PIN_LED, HIGH); // turn on LED
-  delay(5000); // wait 5 seconds
   digitalWrite(PIN_LED, LOW); // turn off LED
+  delay(500);
+  digitalWrite(PIN_LED, HIGH); // turn on LED
+  delay(250);
+  digitalWrite(PIN_LED, LOW); // turn on LED
 
   // Set the values to be intial.
   resetAllServos();
   updateServoValues();
+
+  while(Serial1.available()){
+    Serial1.read(); // Empty the input stream before operation begins.
+  }
 }
 
 void loop() {
-  // TODO: read the input constantly, when messages come from servo, make appropriate state change.
-  while(Serial1.available() > 0){
-    Serial1.read();
+  if(Serial1.available() > 0){
+    char incoming = Serial1.read();
+    routeInput(incoming);
   }
-  Serial1.print(F("test")); // still trying to figure out how these work 
-  Console.println("test!"); // with PuTTY.
-  
 }
+
+void routeInput(char sym){
+  switch(sym){
+    case 'w': // move forward
+      if(motorIsMoving) stopBothMotors();
+      if(!motorIsMoving) startBothMotors(ROD_CRUISING_SPEED);
+      break;
+    case 's': // move backward, how does this work programatically? negative values?
+      break;
+
+      
+    case 'a': // turn left
+      break;
+    case 'd': // turn right
+
+    
+    case 'i': // camera up
+      break;
+    case 'k': // camera down
+      break;
+    case 'j': // camera left
+      break;
+    case 'l': // camera right
+      break;
+
+      
+    case 't': // ramp up
+      break;
+    case 'g': // ramp down
+      break;
+
+      
+    case 'c': // claws toggle
+      break;
+    
+    }
+}
+
 
 
 // Secondary functions
@@ -111,7 +156,7 @@ void updateServoValues(){ // corrects the global variables for positions of the 
 // Move a single motor at a specified speed
 void startMotor(int motorSpeed, int pin){
   // motorSpeed should be between 0 and 255
-  Serial1.println("[DCMOTOR] Started DC motor on %d with speed %d."); // TODO: fix this interp
+//  Serial1.println("[DCMOTOR] Started DC motor on %d with speed %d."); // TODO: fix this interp
   motorIsMoving = true;
   analogWrite(pin, motorSpeed);
 }
@@ -119,18 +164,28 @@ void startMotor(int motorSpeed, int pin){
 // Stop moving the motor on the specified pin
 void stopMotor(int pin){
   if(!motorIsMoving) return; // nothing is moving, nothing to stop.
-  String logStr = "[DCMOTOR] Stopping motor on pin " + pin + ".";
-  netLog(logStr);
   analogWrite(pin, 0); // stop the motor.
   motorIsMoving = false;
   netLog("[DCMOTOR] Motor stopped.");
 }
 
+void stopBothMotors(){
+  analogWrite(PIN_MOTOR_WHEEL_LEFT , 0);
+  analogWrite(PIN_MOTOR_WHEEL_RIGHT , 0);
+  motorIsMoving = false;
+}
+
+void startBothMotors(int speed){
+  analogWrite(PIN_MOTOR_WHEEL_LEFT , speed);
+  analogWrite(PIN_MOTOR_WHEEL_RIGHT , speed);
+  motorIsMoving = true;
+}
+
 // This function takes a motor on the provided pin and turns it on at the
 // specified speed for the number of milliseconds provided
 void controlSingleMotor(int motorPin, int motorSpeed, int duration){
-  String logStr = "[DCMOTOR] Motor on pin " + motorPin + " with speed " + motorSpeed + " will be turned on for " + duration + " milliseconds.";
-  netLog(logStr);
+//  String logStr = "[DCMOTOR] Motor on pin " + motorPin + " with speed " + motorSpeed + " will be turned on for " + duration + " milliseconds.";
+//  netLog(logStr);
   motorIsMoving = true;
   analogWrite(motorPin, motorSpeed); // turn on to specificed speed
   delay(duration); // wait
@@ -145,7 +200,7 @@ void moveForwardDistance(int distance){ // distance is in cm
   //TODO: this function will require real-world measurements before it can be written fully
   
   if(motorIsMoving) return; // break if motors are already in motion.
-  Serial1.println("[DCMOTOR] Moving the ROD forward.");
+//  Serial1.println("[DCMOTOR] Moving the ROD forward.");
   motorIsMoving = true;
   analogWrite(PIN_MOTOR_WHEEL_LEFT, 127); // the number here will need to be tweaked.
   analogWrite(PIN_MOTOR_WHEEL_RIGHT, 127); 
@@ -153,7 +208,7 @@ void moveForwardDistance(int distance){ // distance is in cm
   analogWrite(PIN_MOTOR_WHEEL_LEFT, 0); // stop the motors
   analogWrite(PIN_MOTOR_WHEEL_RIGHT, 0);
   motorIsMoving = false;
-  Serial1.println("[DCMOTOR] Motors have stopped moving.");
+//  Serial1.println("[DCMOTOR] Motors have stopped moving.");
 }
 
 // Move the servo to the specified position
@@ -213,5 +268,5 @@ void moveServoGradual(Servo servo, int position, int delayBtwnMoves, int degreeS
 // Logs various messages to the Serial1 output.
 void netLog(char logMessage[]){
   // TODO: make this actually work.
-  Serial1.println(logMessage); 
+//  Serial1.println(logMessage); 
 }
