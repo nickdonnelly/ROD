@@ -14,17 +14,20 @@ const int BAUDRATE_COMMUNICATION = 115200; // 115200 = wifi or ethernet, 9600 = 
 const int PIN_LED = 13; // Pin for the LED on-board the Yun
 
 // Note the DC Motors have to use the PWM capable pins for speed control.
-const int PIN_MOTOR_WHEEL_LEFT = 0; // these are the pins for the motors, don't forget
-const int PIN_MOTOR_WHEEL_RIGHT = 0; // to change these values to the correct ones later.
+const int PIN_MOTOR_WHEEL_LEFT = 3;  
+const int PIN_MOTOR_WHEEL_LEFT_REVERSE = 5;
 
-const int PIN_SERVO_RAMP = 0;
-const int PIN_SERVO_CLAWS_LEFT = 0; // these may be the same? Not sure.
-const int PIN_SERVO_CLAWS_RIGHT = 0;
+const int PIN_MOTOR_WHEEL_RIGHT = 6;
+const int PIN_MOTOR_WHEEL_RIGHT_REVERSE = 11;
 
-const int PIN_SERVO_CAMERA_X = 0; // the 2 axial motors for the camera
-const int PIN_SERVO_CAMERA_Y = 0; 
+const int PIN_SERVO_CLAWS_LEFT = A0; // these may be the same? Not sure.
+const int PIN_SERVO_CLAWS_RIGHT = A1;
+const int PIN_SERVO_RAMP = A2;
 
-const int ROD_CRUISING_SPEED = 127; // tweak this. Our input system is quite rudimentary due most likely to
+const int PIN_SERVO_CAMERA_X = A3; // the 2 axial motors for the camera
+const int PIN_SERVO_CAMERA_Y = A4; 
+
+int ROD_CRUISING_SPEED = 255; // tweak this. Our input system is quite rudimentary due most likely to
                                     // network configuration the course administrators wont let us change, so
                                     // this value needs to be correct.
 
@@ -38,8 +41,12 @@ Servo servoCameraY; // y axis
 
 
 // Other Globals
-bool servoIsMoving = false;
-bool motorIsMoving = false; // these are on-the-fly updated.
+bool isTurningLeft = false;
+bool isTurningRight = false;
+bool isMovingForward = false;
+bool isMovingBackward = false;
+bool isRampUp = false;
+bool clawsInUse = false;
 
 int SERVO_LEFT_CLAW_POS = 0;
 int SERVO_RIGHT_CLAW_POS = 0;
@@ -50,8 +57,7 @@ int SERVO_CAMERA_Y_POS = 0;
 void setup() {
   // Start the serial communication
   Serial1.begin(115200); // this should be "Serial" if using USB. Serial1 is for ethernet/wifi.
-//  Bridge.begin(); // for testing
-//  Console.begin(); // for testing
+
   // Register the servos to the pins on the Arduino
   servoLeftClaw.attach(PIN_SERVO_CLAWS_LEFT);
   servoRightClaw.attach(PIN_SERVO_CLAWS_RIGHT);
@@ -65,7 +71,7 @@ void setup() {
   pinMode(PIN_LED, OUTPUT); // set the LED pin to output
 
   digitalWrite(PIN_LED, HIGH); // turn on LED
-  delay(60000); // wait 60 seconds to allow the connection to establish. This time may not need to be this long, but 
+  delay(30000); // wait 60 seconds to allow the connection to establish. This time may not need to be this long, but 
   
   
   // Finally, blink the LED so we know the arduino is done booting.
@@ -85,46 +91,47 @@ void setup() {
 }
 
 void loop() {
-  if(Serial1.available() > 0){
-    char incoming = Serial1.read();
+  if(Serial.available() > 0){
+    char incoming = Serial.read();
     routeInput(incoming);
   }
 }
 
 void routeInput(char sym){
   switch(sym){
-    case 'w': // move forward
-      if(motorIsMoving) stopBothMotors();
-      if(!motorIsMoving) startBothMotors(ROD_CRUISING_SPEED);
+    case 'w': // wasd = forward, left, backward, right respectively
+      toggleForward();
       break;
-    case 's': // move backward, how does this work programatically? negative values?
+    case 's':
+      toggleBackward();
+      break;
+    case 'a':
+      toggleTurnLeft();
+      break;
+    case 'd':
+      toggleTurnRight();
+
+
+    // TODO, make these movements incrememntal. need rod to test.
+    case 'e': // ramp up/down
+      toggleRamp();
+      break;
+    case 'c':
+      toggleClaws();
       break;
 
-      
-    case 'a': // turn left
+    case 'i': // ijkl are up, down, left, right camera respectively
+      cameraUp();
       break;
-    case 'd': // turn right
-
-    
-    case 'i': // camera up
+    case 'k':
+      cameraDown();
       break;
-    case 'k': // camera down
+    case 'j':
+      cameraLeft();
       break;
-    case 'j': // camera left
+    case 'l':
+      cameraRight();
       break;
-    case 'l': // camera right
-      break;
-
-      
-    case 't': // ramp up
-      break;
-    case 'g': // ramp down
-      break;
-
-      
-    case 'c': // claws toggle
-      break;
-    
     }
 }
 
@@ -132,15 +139,11 @@ void routeInput(char sym){
 
 // Secondary functions
 void resetAllServos(){ //TODO: these values should be updated to reflect the correct values. The default might be 90?
-  servoIsMoving = true;
   servoLeftClaw.write(0);
   servoRightClaw.write(0);
   servoRamp.write(0);
   servoCameraX.write(0);
   servoCameraY.write(0);
-  delay(500);
-  servoIsMoving = false;
-  netLog("[SERVO] All servos reset to initial positions.");
 }
 
 void updateServoValues(){ // corrects the global variables for positions of the servos
@@ -149,85 +152,159 @@ void updateServoValues(){ // corrects the global variables for positions of the 
   SERVO_RAMP_POS = servoRamp.read();
   SERVO_CAMERA_X_POS = servoCameraX.read();
   SERVO_CAMERA_Y_POS = servoCameraY.read();
-  netLog("[SERVO] All servo position values updated.");
+}
+
+void cameraUp(){
+  int newVal = clamp(SERVO_CAMERA_Y_POS + 5, 0, 180);
+  servoCameraY.write(newVal);
+  updateServoValues();
+}
+
+void cameraDown(){
+  int newVal = clamp(SERVO_CAMERA_Y_POS - 5, 0, 180);
+  servoCameraY.write(newVal);
+  updateServoValues();
+}
+
+void cameraLeft(){
+  int newVal = clamp(SERVO_CAMERA_X_POS - 5, 0, 180);
+  servoCameraX.write(newVal);
+  updateServoValues();
+}
+
+void cameraRight(){
+  int newVal = clamp(SERVO_CAMERA_X_POS + 5, 0, 180);
+  servoCameraX.write(newVal);
+  updateServoValues();
+}
+
+void toggleClaws(){
+  if(clawsInUse){ // TODO tweak these
+    servoLeftClaw.write(0);
+    servoRightClaw.write(180);
+    clawsInUse = false;
+  }else{
+    servoLeftClaw.write(180);
+    servoRightClaw.write(0);
+    clawsInUse = true;
+  }
 }
 
 
+void toggleRamp(){
+  if(isRampUp){ // put ramp down
+    servoRamp.write(0);
+    isRampUp = false;
+  }else{ // put ramp up
+    servoRamp.write(90);
+    isRampUp = true;
+  }
+}
+
+void startBothMotors(bool forward){ // true = forward, false = reverse
+  stopBothMotors();
+  if(forward){
+    startMotor(PIN_MOTOR_WHEEL_LEFT, ROD_CRUISING_SPEED);
+    startMotor(PIN_MOTOR_WHEEL_RIGHT, ROD_CRUISING_SPEED);
+    isMovingForward = true;
+    isMovingBackward = false;
+  }else{
+    startMotor(PIN_MOTOR_WHEEL_LEFT_REVERSE, ROD_CRUISING_SPEED);
+    startMotor(PIN_MOTOR_WHEEL_RIGHT_REVERSE, ROD_CRUISING_SPEED);
+    isMovingForward = false;
+    isMovingBackward = false;
+  }
+}
+
+void toggleForward(){
+  if(isMovingForward){
+    stopBothMotors();
+    isMovingForward = false;
+  }else{
+    stopBothMotors();
+    isMovingForward = true;
+    startBothMotors(true);
+  }
+}
+
+void toggleBackward(){
+  if(isMovingBackward){
+    stopBothMotors();
+    isMovingBackward = false;
+  }else{
+    stopBothMotors();
+    isMovingBackward = true;
+    startBothMotors(false);
+  }
+}
+
+// start right wheel, stop left wheel
+void toggleTurnLeft(){
+  if(isTurningLeft){
+    stopBothMotors();
+    isTurningLeft = false;
+  }else{
+    stopBothMotors();
+    isTurningLeft = true;
+    stopMotor("left");
+    startMotor(PIN_MOTOR_WHEEL_RIGHT, 127);
+  }
+}
+
+void toggleTurnRight(){
+  if(isTurningRight){
+    stopBothMotors();
+    isTurningRight = false;
+  }else{
+    stopBothMotors();
+    isTurningRight = true;
+    stopMotor("right");
+    startMotor(PIN_MOTOR_WHEEL_LEFT, 127);
+  }
+}
+
+void increaseCruisingSpeed(){
+  if(ROD_CRUISING_SPEED >= 255){
+    return;
+  }else{
+    ROD_CRUISING_SPEED += 5; 
+    if(ROD_CRUISING_SPEED > 255) ROD_CRUISING_SPEED = 255; // does arduino have clamp? who knows
+  }
+}
+
+void decreaseCruisingSpeed(){
+  if(ROD_CRUISING_SPEED < 100){
+    return;
+  }else{
+    ROD_CRUISING_SPEED -= 5;
+  }
+}
+
 // Move a single motor at a specified speed
-void startMotor(int motorSpeed, int pin){
-  // motorSpeed should be between 0 and 255
-//  Serial1.println("[DCMOTOR] Started DC motor on %d with speed %d."); // TODO: fix this interp
-  motorIsMoving = true;
+void startMotor(int pin, int motorSpeed){
   analogWrite(pin, motorSpeed);
 }
 
 // Stop moving the motor on the specified pin
-void stopMotor(int pin){
-  if(!motorIsMoving) return; // nothing is moving, nothing to stop.
-  analogWrite(pin, 0); // stop the motor.
-  motorIsMoving = false;
-  netLog("[DCMOTOR] Motor stopped.");
+void stopMotor(String motor){ // left or right
+  if(motor == "left"){
+    analogWrite(PIN_MOTOR_WHEEL_LEFT, 0);
+    analogWrite(PIN_MOTOR_WHEEL_LEFT_REVERSE, 0);
+  }else if(motor == "right"){
+    analogWrite(PIN_MOTOR_WHEEL_RIGHT, 0);
+    analogWrite(PIN_MOTOR_WHEEL_RIGHT_REVERSE, 0);
+  }
 }
 
 void stopBothMotors(){
-  analogWrite(PIN_MOTOR_WHEEL_LEFT , 0);
-  analogWrite(PIN_MOTOR_WHEEL_RIGHT , 0);
-  motorIsMoving = false;
-}
-
-void startBothMotors(int speed){
-  analogWrite(PIN_MOTOR_WHEEL_LEFT , speed);
-  analogWrite(PIN_MOTOR_WHEEL_RIGHT , speed);
-  motorIsMoving = true;
-}
-
-// This function takes a motor on the provided pin and turns it on at the
-// specified speed for the number of milliseconds provided
-void controlSingleMotor(int motorPin, int motorSpeed, int duration){
-//  String logStr = "[DCMOTOR] Motor on pin " + motorPin + " with speed " + motorSpeed + " will be turned on for " + duration + " milliseconds.";
-//  netLog(logStr);
-  motorIsMoving = true;
-  analogWrite(motorPin, motorSpeed); // turn on to specificed speed
-  delay(duration); // wait
-  analogWrite(motorPin, 0); // turn the motor off
-  motorIsMoving = false;
-  netLog("[DCMOTOR] Motor stopped.");
-}
-
-
-// Move the ROD forward the distance specified
-void moveForwardDistance(int distance){ // distance is in cm
-  //TODO: this function will require real-world measurements before it can be written fully
-  
-  if(motorIsMoving) return; // break if motors are already in motion.
-//  Serial1.println("[DCMOTOR] Moving the ROD forward.");
-  motorIsMoving = true;
-  analogWrite(PIN_MOTOR_WHEEL_LEFT, 127); // the number here will need to be tweaked.
-  analogWrite(PIN_MOTOR_WHEEL_RIGHT, 127); 
-  delay(500); // again, tweak to be calculated programatically
-  analogWrite(PIN_MOTOR_WHEEL_LEFT, 0); // stop the motors
+  analogWrite(PIN_MOTOR_WHEEL_LEFT, 0);
   analogWrite(PIN_MOTOR_WHEEL_RIGHT, 0);
-  motorIsMoving = false;
-//  Serial1.println("[DCMOTOR] Motors have stopped moving.");
-}
-
-// Move the servo to the specified position
-void moveServo(Servo servo, int position){
-  if(!servo.attached()) {  // exit if the servo isn't correctly attached
-    netLog("[SERVO] Attempted to move servo that wasn't attached!");
-    return;
-  }
-  servoIsMoving = true; // set global flag
-  int currPos = servo.read(); // gets the current position value of the servo (0-180);
-  if(position > 180 || position < 0){
-    netLog("[SERVO] Position value must be between 0-180.");
-    return;
-  }
-  servo.write(position); // move the servo
-  delay(500); // wait 1/2 second to allow servo to move
-  servoIsMoving = false; // reset global flag
-  updateServoValues();
-  netLog("[SERVO] Servo movement complete.");
+  analogWrite(PIN_MOTOR_WHEEL_LEFT_REVERSE, 0);
+  analogWrite(PIN_MOTOR_WHEEL_RIGHT_REVERSE, 0);
+  isTurningLeft = false;
+  isTurningRight = false;
+  isMovingForward = false;
+  isMovingBackward = false;
 }
 
 // does the same as moveServo, but in small steps for smoother movement.
@@ -235,10 +312,8 @@ void moveServo(Servo servo, int position){
 // land exactly on the desired position
 void moveServoGradual(Servo servo, int position, int delayBtwnMoves, int degreeStep){
   if(!servo.attached()){
-    netLog("[SERVO] Attempted to move servo that wasn't attached!");
     return;
   }
-  servoIsMoving = true;
   int currPos = servo.read();
   while(currPos != position){
     
@@ -260,13 +335,12 @@ void moveServoGradual(Servo servo, int position, int delayBtwnMoves, int degreeS
     delay(delayBtwnMoves); // delay, update the current position, restart loop.
     currPos = servo.read();
   }
-  servoIsMoving = false;
   updateServoValues();
-  netLog("[SERVO] Servo movement complete.");
 }
 
-// Logs various messages to the Serial1 output.
-void netLog(char logMessage[]){
-  // TODO: make this actually work.
-//  Serial1.println(logMessage); 
+int clamp(int in, int low, int high){ // clamps an input value inbetween two bounds inclusively
+  if(in <= low) return low;
+  if(in >= high) return high;
+  return in;
 }
+
