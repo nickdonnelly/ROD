@@ -56,7 +56,6 @@ int SERVO_CAMERA_Y_POS = 0;
 
 void setup() {
   // Start the serial communication
-  Serial1.begin(115200); // this should be "Serial" if using USB. Serial1 is for ethernet/wifi.
 
   // Register the servos to the pins on the Arduino
   servoLeftClaw.attach(PIN_SERVO_CLAWS_LEFT);
@@ -69,9 +68,11 @@ void setup() {
   pinMode(PIN_MOTOR_WHEEL_LEFT, OUTPUT); // not sure these two lines are necessary.
   pinMode(PIN_MOTOR_WHEEL_RIGHT, OUTPUT);
   pinMode(PIN_LED, OUTPUT); // set the LED pin to output
+  
+  Serial1.begin(115200); // this should be "Serial" if using USB. Serial1 is for ethernet/wifi.
 
   digitalWrite(PIN_LED, HIGH); // turn on LED
-  delay(30000); // wait 60 seconds to allow the connection to establish. This time may not need to be this long, but 
+  delay(60000); // wait 60 seconds to allow the connection to establish. This time may not need to be this long, but 
   
   
   // Finally, blink the LED so we know the arduino is done booting.
@@ -91,8 +92,8 @@ void setup() {
 }
 
 void loop() {
-  if(Serial.available() > 0){
-    char incoming = Serial.read();
+  if(Serial1.available() > 0){
+    char incoming = Serial1.read();
     routeInput(incoming);
   }
 }
@@ -100,25 +101,51 @@ void loop() {
 void routeInput(char sym){
   switch(sym){
     case 'w': // wasd = forward, left, backward, right respectively
-      toggleForward();
+      toggleBackward();
       break;
     case 's':
-      toggleBackward();
+      toggleForward();
       break;
     case 'a':
       toggleTurnLeft();
       break;
     case 'd':
       toggleTurnRight();
+      break;
+
+    case 'W': 
+      toggleBackwardFast();
+      break;
+    case 'S':
+      toggleForwardFast();
+      break;
+    case 'A':
+      toggleTurnLeftFast();
+      break;
+    case 'D':
+      toggleTurnRightFast();
+
+    
 
 
     // TODO, make these movements incrememntal. need rod to test.
     case 'e': // ramp up/down
       toggleRamp();
       break;
-    case 'c':
+    case 'c': // claws in
       toggleClaws();
       break;
+    case 'x':
+      toggleClawsOut();
+      break;
+
+    case 't':
+      rampUp(); // 0
+      break;
+    case 'g':
+      rampDown(); // 100
+      break;
+      
 
     case 'i': // ijkl are up, down, left, right camera respectively
       cameraUp();
@@ -132,6 +159,14 @@ void routeInput(char sym){
     case 'l':
       cameraRight();
       break;
+
+
+    case 'o':
+      digitalWrite(PIN_LED, HIGH);
+      break;
+    case 'p':
+      digitalWrite(PIN_LED, LOW);
+      break;
     }
 }
 
@@ -139,11 +174,8 @@ void routeInput(char sym){
 
 // Secondary functions
 void resetAllServos(){ //TODO: these values should be updated to reflect the correct values. The default might be 90?
-  servoLeftClaw.write(0);
-  servoRightClaw.write(0);
-  servoRamp.write(0);
-  servoCameraX.write(0);
-  servoCameraY.write(0);
+  servoCameraX.write(100);
+  servoCameraY.write(75);
 }
 
 void updateServoValues(){ // corrects the global variables for positions of the servos
@@ -154,40 +186,58 @@ void updateServoValues(){ // corrects the global variables for positions of the 
   SERVO_CAMERA_Y_POS = servoCameraY.read();
 }
 
-void cameraUp(){
-  int newVal = clamp(SERVO_CAMERA_Y_POS + 5, 0, 180);
-  servoCameraY.write(newVal);
-  updateServoValues();
+int clamp(int in, int low, int high){ // clamps an input value inbetween two bounds inclusively
+  if(in <= low) return low;
+  if(in >= high) return high;
+  return in;
 }
 
-void cameraDown(){
+void cameraUp(){
   int newVal = clamp(SERVO_CAMERA_Y_POS - 5, 0, 180);
   servoCameraY.write(newVal);
   updateServoValues();
 }
 
-void cameraLeft(){
-  int newVal = clamp(SERVO_CAMERA_X_POS - 5, 0, 180);
-  servoCameraX.write(newVal);
+void cameraDown(){
+  int newVal = clamp(SERVO_CAMERA_Y_POS + 5, 0, 180);
+  servoCameraY.write(newVal);
   updateServoValues();
 }
 
-void cameraRight(){
+void cameraLeft(){
   int newVal = clamp(SERVO_CAMERA_X_POS + 5, 0, 180);
   servoCameraX.write(newVal);
   updateServoValues();
 }
 
+void cameraRight(){
+  int newVal = clamp(SERVO_CAMERA_X_POS - 5, 0, 180);
+  servoCameraX.write(newVal);
+  updateServoValues();
+}
+
+void rampDown(){
+  int newVal = clamp(SERVO_RAMP_POS + 5, 0, 100);
+//  servoRamp.write(newVal);
+  moveServoGradual(servoRamp, 100, 100, 5);
+  updateServoValues();
+}
+
+void rampUp(){
+  int newVal = clamp(SERVO_RAMP_POS - 5, 0, 100);
+//  servoRamp.write(newVal);
+  moveServoGradual(servoRamp, 30, 100, 5);
+  updateServoValues();
+}
+
 void toggleClaws(){
-  if(clawsInUse){ // TODO tweak these
-    servoLeftClaw.write(0);
-    servoRightClaw.write(180);
-    clawsInUse = false;
-  }else{
-    servoLeftClaw.write(180);
-    servoRightClaw.write(0);
-    clawsInUse = true;
-  }
+  servoLeftClaw.write(0);
+  delay(1000);
+  servoLeftClaw.write(90);
+}
+
+void toggleClawsOut(){
+  servoLeftClaw.write(0);
 }
 
 
@@ -196,7 +246,7 @@ void toggleRamp(){
     servoRamp.write(0);
     isRampUp = false;
   }else{ // put ramp up
-    servoRamp.write(90);
+    servoRamp.write(45);
     isRampUp = true;
   }
 }
@@ -217,50 +267,70 @@ void startBothMotors(bool forward){ // true = forward, false = reverse
 }
 
 void toggleForward(){
-  if(isMovingForward){
-    stopBothMotors();
-    isMovingForward = false;
-  }else{
-    stopBothMotors();
-    isMovingForward = true;
-    startBothMotors(true);
-  }
+  
+  stopBothMotors();
+
+  startBothMotors(false);
+  delay(250);
+  stopBothMotors();
 }
 
 void toggleBackward(){
-  if(isMovingBackward){
-    stopBothMotors();
-    isMovingBackward = false;
-  }else{
-    stopBothMotors();
-    isMovingBackward = true;
-    startBothMotors(false);
-  }
+  
+  stopBothMotors();
+
+  startBothMotors(true);
+  delay(250);
+  stopBothMotors();
+}
+
+void toggleForwardFast(){
+  
+  stopBothMotors();
+
+  startBothMotors(false);
+  delay(1000);
+  stopBothMotors();
+}
+
+void toggleBackwardFast(){
+  
+  stopBothMotors();
+
+  startBothMotors(true);
+  delay(1000);
+  stopBothMotors();
 }
 
 // start right wheel, stop left wheel
 void toggleTurnLeft(){
-  if(isTurningLeft){
-    stopBothMotors();
-    isTurningLeft = false;
-  }else{
-    stopBothMotors();
-    isTurningLeft = true;
-    stopMotor("left");
-    startMotor(PIN_MOTOR_WHEEL_RIGHT, 127);
-  }
+  stopBothMotors();
+  startMotor(PIN_MOTOR_WHEEL_RIGHT, 255);
+  startMotor(PIN_MOTOR_WHEEL_LEFT_REVERSE, 255);
+  delay(800);
+  stopBothMotors();
 }
 
 void toggleTurnRight(){
-  if(isTurningRight){
-    stopBothMotors();
-    isTurningRight = false;
-  }else{
-    stopBothMotors();
-    isTurningRight = true;
-    stopMotor("right");
-    startMotor(PIN_MOTOR_WHEEL_LEFT, 127);
-  }
+  stopBothMotors();
+  startMotor(PIN_MOTOR_WHEEL_LEFT, 255);
+  startMotor(PIN_MOTOR_WHEEL_RIGHT_REVERSE, 255);
+  delay(800);
+  stopBothMotors();
+}
+
+void toggleTurnLeftFast(){
+  stopBothMotors();
+  startMotor(PIN_MOTOR_WHEEL_RIGHT, 127);
+  delay(500);
+  stopMotor("right");
+}
+
+void toggleTurnRightFast(){
+  stopBothMotors();
+  startMotor(PIN_MOTOR_WHEEL_LEFT, 127);
+  delay(500);
+  stopMotor("left");
 }
 
 void increaseCruisingSpeed(){
@@ -338,9 +408,5 @@ void moveServoGradual(Servo servo, int position, int delayBtwnMoves, int degreeS
   updateServoValues();
 }
 
-int clamp(int in, int low, int high){ // clamps an input value inbetween two bounds inclusively
-  if(in <= low) return low;
-  if(in >= high) return high;
-  return in;
-}
+
 
